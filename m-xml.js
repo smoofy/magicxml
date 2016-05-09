@@ -1,10 +1,10 @@
-﻿/******************************************************************************
+/******************************************************************************
 Magic XML by Tom Davies
 -----------------------
 Magically implements cross-browser code from w3schools.com/xsl/xsl_client.asp 
 to pull in XML data and apply a specified XSLT on marked up elements.
 
-More details at: http://www.t-davies.com/magicxml/
+More details at: http://tomdavies.azurewebsites.net/magicxml/
 
 ******************************************************************************/
 
@@ -48,36 +48,14 @@ THE SOFTWARE.
 
     // Closure prevents access to supporting functions we need by placing them
     // in encapsulating function scope.
-
-    function loadXML(source) {
-        var xhr = (window.ActiveXObject || "ActiveXObject" in window) ?
-                new ActiveXObject("Msxml2.XMLHTTP.3.0") :
-                new XMLHttpRequest();
-
-        xhr.open("GET", source, false);
-        xhr.send();
-        return xhr.responseXML;
-    }
-
-    function loadXSL(source) {
-        if (window.ActiveXObject || "ActiveXObject" in window) {
-            var xsl = new ActiveXObject("MSXML2.FreeThreadedDOMDocument.6.0");
-            xsl.async = false;
-            xsl.load(source);
-            return xsl;
-        }
-
-        // If we don't need to use ActiveX just get normally.
-        return loadXML(source);
-    }
-
+    
     function getTransformFragment(xml, xsl, parameters) {
         var i = 0,
             parameter,
             xslt = new XSLTProcessor();
-
+        
         xslt.importStylesheet(xsl);
-
+        
         // If we have a parameters array, set the values in the XSLT.
         if (parameters !== undefined) {
             for (i; i < parameters.length; i++) {
@@ -118,7 +96,7 @@ THE SOFTWARE.
     }
 
     // End supporting function definitions.
-      
+    
     // Declare Magic XML functionality.
     var x = {
 
@@ -144,16 +122,51 @@ THE SOFTWARE.
         /// XSLT parameters that are supplied and taking care of cross browser
         /// compatability issues automatically.
         /// </summary>
-        transform: function (xmlSource, xslSource, parameters) {
-            var xml = loadXML(xmlSource),
-                xsl = loadXSL(xslSource);
-
+        transform: function (xmlSource, xslSource, parameters, callback) {
+            var transformed = false;
+            var xm = { readyState: 4 };
+            var xs = { readyState: 4 };
+            
+            var change = function() {
+                if (xm.readyState == 4 && xs.readyState == 4 && !transformed) {
+                    xml = xm.responseXML;
+                    if (window.ActiveXObject || "ActiveXObject" in window) {
+                        xsl = xs;
+                        callback(getActiveXTransform(xml, xsl, parameters));
+                    } else {
+                        xsl = xs.responseXML;
+                        if (!xsl) {
+                            // Firefox fix
+                            xsl = (new DOMParser()).parseFromString(xs.responseText, 'text/xml');
+                        }
+                        if (!xml) {
+                            // Firefox fix
+                            xml = (new DOMParser()).parseFromString(xm.responseText, 'text/xml');
+                        }
+                        callback(getTransformFragment(xml, xsl, parameters));
+                    }
+                    transformed = true;
+                }
+            };
+            
+            xm = new XMLHttpRequest();
+            xm.onreadystatechange = change;
+            xm.open('GET', xmlSource);
+            xm.send(null);
+            
             if (window.ActiveXObject || "ActiveXObject" in window) {
-                return getActiveXTransform(xml, xsl, parameters);
+                var xs = new ActiveXObject("MSXML2.FreeThreadedDOMDocument.6.0");
+                xs.async = true;
+                xs.onreadystatechange = change;
+                xs.load(xslSource);
+            } else {
+                xs = new XMLHttpRequest();
+                xs.onreadystatechange = change;
+                xs.open('GET', xslSource);
+                xs.send(null);
             }
-            else {
-                return getTransformFragment(xml, xsl, parameters);
-            }
+            
+            return( change() );
         },
 
         /// <summary>
@@ -225,4 +238,4 @@ THE SOFTWARE.
     // Throw 'x' into global scope to allow use in other scripts.
     window.magicXML = x;
     
-}(window, document)
+}(window, document);
